@@ -26,7 +26,7 @@ export default function LoginPage() {
     }
 
     setLoading(false)
-    router.push("/post")
+    router.push("/")
   }
 
   return (

@@ -9,6 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 
+type Question = {
+  question: string
+  options: string[]
+  correctIndex: number
+}
+
 export default function PostItemPage() {
   const router = useRouter()
 
@@ -16,6 +22,11 @@ export default function PostItemPage() {
   const [category, setCategory] = useState("")
   const [description, setDescription] = useState("")
   const [file, setFile] = useState<File | null>(null)
+
+  const [questions, setQuestions] = useState<Question[]>([
+    { question: "", options: ["", "", ""], correctIndex: 0 },
+    { question: "", options: ["", "", ""], correctIndex: 0 },
+  ])
 
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -25,6 +36,24 @@ export default function PostItemPage() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push("/login")
+  }
+
+  const validateQuestions = () => {
+    if (questions.length < 2) return "Please add at least 2 questions."
+
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i]
+      if (!q.question.trim()) return `Question ${i + 1} is empty.`
+      if (!Array.isArray(q.options) || q.options.length !== 3)
+        return `Question ${i + 1} must have exactly 3 options.`
+      for (let j = 0; j < 3; j++) {
+        if (!q.options[j].trim()) return `Option ${String.fromCharCode(65 + j)} in Question ${i + 1} is empty.`
+      }
+      if (![0, 1, 2].includes(q.correctIndex))
+        return `Please select the correct option for Question ${i + 1}.`
+    }
+
+    return null
   }
 
   const handleSubmit = async () => {
@@ -42,6 +71,19 @@ export default function PostItemPage() {
 
     if (!file) {
       setMsg("Please select an image.")
+      setSaving(false)
+      return
+    }
+
+    if (!title.trim() || !category.trim()) {
+      setMsg("Title and category are required.")
+      setSaving(false)
+      return
+    }
+
+    const qError = validateQuestions()
+    if (qError) {
+      setMsg(qError)
       setSaving(false)
       return
     }
@@ -67,7 +109,7 @@ export default function PostItemPage() {
 
     const image_url = publicUrlData.publicUrl
 
-    // Insert into items table
+    // Insert into items table (questions saved here)
     const { error: insertError } = await supabase.from("items").insert({
       title,
       category,
@@ -75,7 +117,7 @@ export default function PostItemPage() {
       image_url,
       founder_id: user.id,
       status: "found",
-      questions: null,
+      questions,
     })
 
     if (insertError) {
@@ -89,6 +131,10 @@ export default function PostItemPage() {
     setCategory("")
     setDescription("")
     setFile(null)
+    setQuestions([
+      { question: "", options: ["", "", ""], correctIndex: 0 },
+      { question: "", options: ["", "", ""], correctIndex: 0 },
+    ])
     setSaving(false)
   }
 
@@ -103,23 +149,13 @@ export default function PostItemPage() {
   if (!allowed) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        You are not allowed to post items.  
-        <div className="flex justify-end mb-4">
-        <Button variant="outline" onClick={handleLogout}>
-          Logout
-        </Button>
-      </div>
+        You are not allowed to post items.
       </main>
     )
   }
 
   return (
     <main className="min-h-screen p-6">
-      <div className="flex justify-end mb-4">
-        <Button variant="outline" onClick={handleLogout}>
-          Logout
-        </Button>
-      </div>
 
       <div className="flex items-center justify-center">
         <Card className="w-full max-w-xl">
@@ -127,7 +163,7 @@ export default function PostItemPage() {
             <CardTitle>Post a Found Item</CardTitle>
           </CardHeader>
 
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="space-y-2">
               <label className="text-sm font-medium">Title</label>
               <Input
@@ -166,6 +202,71 @@ export default function PostItemPage() {
               <p className="text-xs text-muted-foreground">
                 Upload an image so seekers can identify the item.
               </p>
+            </div>
+
+            {/* Questions UI */}
+            <div className="space-y-6">
+              <h3 className="text-sm font-semibold">Verification Questions</h3>
+
+              {questions.map((q, qIndex) => (
+                <div key={qIndex} className="space-y-3 border rounded-md p-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Question {qIndex + 1}
+                    </label>
+                    <Input
+                      value={q.question}
+                      onChange={(e) => {
+                        const copy = [...questions]
+                        copy[qIndex].question = e.target.value
+                        setQuestions(copy)
+                      }}
+                      placeholder="e.g., What color was the wallet?"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    {q.options.map((opt, optIndex) => (
+                      <div key={optIndex} className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`correct-${qIndex}`}
+                          checked={q.correctIndex === optIndex}
+                          onChange={() => {
+                            const copy = [...questions]
+                            copy[qIndex].correctIndex = optIndex
+                            setQuestions(copy)
+                          }}
+                        />
+                        <Input
+                          value={opt}
+                          onChange={(e) => {
+                            const copy = [...questions]
+                            copy[qIndex].options[optIndex] = e.target.value
+                            setQuestions(copy)
+                          }}
+                          placeholder={`Option ${String.fromCharCode(65 + optIndex)}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {questions.length < 3 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setQuestions([
+                      ...questions,
+                      { question: "", options: ["", "", ""], correctIndex: 0 },
+                    ])
+                  }
+                >
+                  + Add another question
+                </Button>
+              )}
             </div>
 
             {msg && <p className="text-sm">{msg}</p>}
