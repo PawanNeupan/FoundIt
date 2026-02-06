@@ -93,7 +93,7 @@ export default function ItemDetailPage() {
 
   return (
     <main className="min-h-screen p-6 max-w-3xl mx-auto">
-      <Card>
+      <Card className="card-hover">
         <CardHeader>
           <CardTitle className="text-xl">{item.title}</CardTitle>
           <p className="text-sm text-muted-foreground">

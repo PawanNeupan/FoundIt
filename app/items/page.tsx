@@ -82,7 +82,7 @@ export default function ItemsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
             <Link key={item.id} href={`/items/${item.id}`}>
-              <Card className="hover:shadow-sm transition-shadow">
+              <Card className="hover:shadow-sm transition-shadow card-hover">
                 <CardHeader>
                   <CardTitle className="text-base">{item.title}</CardTitle>
                   <p className="text-xs text-muted-foreground">

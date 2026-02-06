@@ -235,7 +235,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left: items list */}
-        <Card className="lg:col-span-1">
+        <Card className="lg:col-span-1 card-hover">
           <CardHeader>
             <CardTitle className="text-base">Your Items</CardTitle>
           </CardHeader>
@@ -285,7 +285,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Right: applicants */}
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 card-hover">
           <CardHeader>
             <CardTitle className="text-base">
               Applicants {selectedItem ? `for: ${selectedItem.title}` : ""}

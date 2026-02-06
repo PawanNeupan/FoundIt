@@ -44,3 +44,15 @@ body {
     @apply bg-background text-foreground;
   }
 }
+@layer utilities {
+  .card-hover {
+    @apply 
+      transition-transform
+      duration-200 ease-out
+      will-change-transform
+      hover:-translate-y-1
+      hover:shadow-lg
+      hover:border-primary/40;
+  }
+}
+

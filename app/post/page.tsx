@@ -158,7 +158,7 @@ export default function PostItemPage() {
     <main className="min-h-screen p-6">
 
       <div className="flex items-center justify-center">
-        <Card className="w-full max-w-xl">
+        <Card className="w-full max-w-xl card-hover">
           <CardHeader>
             <CardTitle>Post a Found Item</CardTitle>
           </CardHeader>

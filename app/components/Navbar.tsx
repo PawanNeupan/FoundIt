@@ -1,87 +1,68 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
-import { Button } from "@/components/ui/button"
-import logo from '../../public/logo.png'
+import { useQueryClient } from "@tanstack/react-query"
 
-type Role = "founder" | "seeker" | null
+import { supabase } from "@/lib/supabaseClient"
+import { useProfile } from "@/lib/useProfile"
+import { Button } from "@/components/ui/button"
 
 export default function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
+  const queryClient = useQueryClient()
 
-  const [loading, setLoading] = useState(true)
-  const [isAuthed, setIsAuthed] = useState(false)
-  const [role, setRole] = useState<Role>(null)
-  const [username, setUsername] = useState<string | null>(null)
+  // ✅ profile comes from TanStack Query cache
+  const { data: profile, isLoading } = useProfile()
+
+  const isAuthed = !!profile
+  const role = profile?.role ?? null
+  const username = profile?.username ?? null
+  const avatarUrl = profile?.avatar_url ?? null
 
   const isActive = (href: string) => pathname === href
 
-  const loadUser = async () => {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const user = sessionData.session?.user
-
-    if (!user) {
-      setIsAuthed(false)
-      setRole(null)
-      setUsername(null)
-      setLoading(false)
-      return
-    }
-
-    setIsAuthed(true)
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, username")
-      .eq("id", user.id)
-      .maybeSingle()
-
-    setRole((profile?.role as Role) ?? null)
-    setUsername(profile?.username ?? null)
-    setLoading(false)
-  }
-
+  // ✅ Sync Supabase auth state -> TanStack Query cache
   useEffect(() => {
-    loadUser()
-
-    const { data: sub } = supabase.auth.onAuthStateChange(
-      (event) => {
-        if (event === "SIGNED_OUT") {
-          // Do NOT set loading here — just reset state
-          setIsAuthed(false)
-          setRole(null)
-          setUsername(null)
-          setLoading(false)
-        } else {
-          loadUser()
-        }
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        // refetch profile immediately
+        queryClient.invalidateQueries({ queryKey: ["profile"] })
       }
-    )
+
+      if (event === "SIGNED_OUT") {
+        // clear profile immediately
+        queryClient.removeQueries({ queryKey: ["profile"] })
+      }
+    })
 
     return () => {
-      sub.subscription.unsubscribe()
+      authListener.subscription.unsubscribe()
     }
-  }, [])
+  }, [queryClient])
 
   const logout = async () => {
     await supabase.auth.signOut()
-    router.replace("/login") // 👈 IMPORTANT
+
+    // ✅ Clear cached profile so navbar updates instantly
+    queryClient.removeQueries({ queryKey: ["profile"] })
+
+    router.replace("/login")
+    router.refresh()
   }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background border-b">
-
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-        <a href="/"><img src="/logo.png" className="h-10 w-auto" alt="FoundIt" />
-</a>
-
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2">
+          <img src="/logo.png" className="h-10 w-auto" alt="FoundIt" />
+        </Link>
 
         {/* Links */}
-        <nav className=" flex items-center gap-2 flex-wrap">
+        <nav className="flex items-center gap-2 flex-wrap">
           <Link
             href="/"
             className={`text-sm px-3 py-1 rounded-md ${
@@ -91,7 +72,6 @@ export default function Navbar() {
             Home
           </Link>
 
-          
           <Link
             href="/items"
             className={`text-sm px-3 py-1 rounded-md ${
@@ -136,7 +116,7 @@ export default function Navbar() {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
-          {loading ? (
+          {isLoading ? (
             <span className="text-xs text-muted-foreground">Loading...</span>
           ) : !isAuthed ? (
             <>
@@ -153,10 +133,26 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              <span className="text-xs text-muted-foreground hidden sm:inline">
-                {username ? `${username} • ` : ""}
-                {role}
-              </span>
+              {/* Avatar -> Profile */}
+              <button
+                type="button"
+                onClick={() => router.push("/profile")}
+                className="h-9 w-9 rounded-full overflow-hidden border border-border bg-muted flex items-center justify-center hover:ring-2 hover:ring-ring transition"
+                title="Profile"
+              >
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={username ?? "Profile"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-sm font-semibold uppercase">
+                    {username?.[0] ?? role?.[0] ?? "U"}
+                  </span>
+                )}
+              </button>
+
               <Button variant="outline" size="sm" onClick={logout}>
                 Logout
               </Button>

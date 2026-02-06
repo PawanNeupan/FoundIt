@@ -97,7 +97,7 @@ export default function HomePage() {
           </div>
 
           {/* Preview Card */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden card-hover">
             <CardContent className="p-0">
               <div className="p-6 border-b bg-card">
                 <p className="text-sm text-muted-foreground">Example</p>
@@ -158,7 +158,7 @@ export default function HomePage() {
           ].map((f, idx) => {
             const Icon = f.icon
             return (
-              <Card key={idx}>
+              <Card key={idx} className="card-hover">
                 <CardContent className="p-6">
                   <div className="h-11 w-11 rounded-lg bg-primary/15 border border-border flex items-center justify-center">
                     <Icon className="h-5 w-5 text-primary" />
@@ -179,7 +179,7 @@ export default function HomePage() {
       {/* How it works */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-6">
-          <Card>
+          <Card className="card-hover">
             <CardContent className="p-6 space-y-4">
               <h3 className="text-xl font-semibold flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
@@ -198,7 +198,7 @@ export default function HomePage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="card-hover">
             <CardContent className="p-6 space-y-4">
               <h3 className="text-xl font-semibold flex items-center gap-2">
                 <Search className="h-5 w-5 text-primary" />
