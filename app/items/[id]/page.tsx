@@ -30,10 +30,14 @@ export default function ItemDetailPage() {
   const [hasApplied, setHasApplied] = useState(false)
   const [isWinner, setIsWinner] = useState(false)
 
+  // ✅ founder email to contact (only for winner)
+  const [founderEmail, setFounderEmail] = useState<string | null>(null)
+
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       setMsg(null)
+      setFounderEmail(null)
 
       const { data, error } = await supabase
         .from("items")
@@ -63,8 +67,24 @@ export default function ItemDetailPage() {
           .eq("seeker_id", user.id)
           .maybeSingle()
 
-        setHasApplied(!!claim)
-        setIsWinner(!!claim?.is_winner)
+        const applied = !!claim
+        const winner = !!claim?.is_winner
+
+        setHasApplied(applied)
+        setIsWinner(winner)
+
+        // ✅ If winner, fetch founder contact email
+        if (winner) {
+          const { data: founderProfile, error: founderErr } = await supabase
+            .from("profiles")
+            .select("email")
+            .eq("id", it.founder_id)
+            .maybeSingle()
+
+          if (!founderErr) {
+            setFounderEmail(founderProfile?.email ?? null)
+          }
+        }
       }
 
       setLoading(false)
@@ -121,17 +141,33 @@ export default function ItemDetailPage() {
           <div className="pt-2">
             {item.status === "claimed" ? (
               isWinner ? (
-                <p className="text-sm text-green-700 font-medium">
-                  🎉 You were selected! Please contact the founder to collect the item.
-                </p>
+                <div className="space-y-2">
+                  <p className="text-sm text-green-700 font-medium">
+                    🎉 You were selected! Contact the founder to collect the item.
+                  </p>
+
+                  {founderEmail ? (
+                    <p className="text-sm">
+                      Founder Email:{" "}
+                      <a
+                        href={`mailto:${founderEmail}`}
+                        className="text-primary underline underline-offset-4"
+                      >
+                        {founderEmail}
+                      </a>
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Founder email not available.
+                    </p>
+                  )}
+                </div>
               ) : hasApplied ? (
                 <p className="text-sm text-muted-foreground">
                   This item has been claimed by another applicant. Thanks for applying.
                 </p>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  This item has been claimed.
-                </p>
+                <p className="text-sm text-muted-foreground">This item has been claimed.</p>
               )
             ) : hasApplied ? (
               <Button disabled variant="outline">

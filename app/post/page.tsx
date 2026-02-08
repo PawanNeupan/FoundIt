@@ -33,10 +33,7 @@ export default function PostItemPage() {
 
   const { loading, allowed } = useRequireFounder()
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push("/login")
-  }
+  
 
   const validateQuestions = () => {
     if (questions.length < 2) return "Please add at least 2 questions."

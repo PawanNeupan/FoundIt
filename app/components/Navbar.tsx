@@ -72,7 +72,27 @@ export default function Navbar() {
             Home
           </Link>
 
-          <Link
+          
+
+          {isAuthed && role === "seeker" && (
+
+
+            <><Link
+              href="/items"
+              className={`text-sm px-3 py-1 rounded-md ${isActive("/items") ? "bg-muted" : "hover:bg-muted"}`}
+            >
+              Items
+            </Link><Link
+              href="/my-claims"
+              className={`text-sm px-3 py-1 rounded-md ${isActive("/my-claims") ? "bg-muted" : "hover:bg-muted"}`}
+            >
+                My Applications
+              </Link></>
+          )}
+
+          {isAuthed && role === "founder" && (
+            <>
+            <Link
             href="/items"
             className={`text-sm px-3 py-1 rounded-md ${
               isActive("/items") ? "bg-muted" : "hover:bg-muted"
@@ -80,20 +100,6 @@ export default function Navbar() {
           >
             Items
           </Link>
-
-          {isAuthed && role === "seeker" && (
-            <Link
-              href="/my-claims"
-              className={`text-sm px-3 py-1 rounded-md ${
-                isActive("/my-claims") ? "bg-muted" : "hover:bg-muted"
-              }`}
-            >
-              My Applications
-            </Link>
-          )}
-
-          {isAuthed && role === "founder" && (
-            <>
               <Link
                 href="/post"
                 className={`text-sm px-3 py-1 rounded-md ${
