@@ -19,6 +19,8 @@ type Item = {
   winning_claim_id: string | null
 }
 
+type Role = "founder" | "seeker" | null
+
 export default function ItemDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
@@ -30,7 +32,8 @@ export default function ItemDetailPage() {
   const [hasApplied, setHasApplied] = useState(false)
   const [isWinner, setIsWinner] = useState(false)
 
-  // ✅ founder email to contact (only for winner)
+  const [viewerRole, setViewerRole] = useState<Role>(null)
+
   const [founderEmail, setFounderEmail] = useState<string | null>(null)
 
   useEffect(() => {
@@ -38,10 +41,16 @@ export default function ItemDetailPage() {
       setLoading(true)
       setMsg(null)
       setFounderEmail(null)
+      setViewerRole(null)
+      setHasApplied(false)
+      setIsWinner(false)
 
+      // 1) Load item
       const { data, error } = await supabase
         .from("items")
-        .select("id,title,category,description,status,image_url,created_at,founder_id,winning_claim_id")
+        .select(
+          "id,title,category,description,status,image_url,created_at,founder_id,winning_claim_id"
+        )
         .eq("id", params.id)
         .single()
 
@@ -55,43 +64,62 @@ export default function ItemDetailPage() {
       const it = data as Item
       setItem(it)
 
-      // Check claim status for this user
+      // 2) Get session
       const { data: sessionData } = await supabase.auth.getSession()
       const user = sessionData.session?.user
 
-      if (user) {
-        const { data: claim } = await supabase
-          .from("claims")
-          .select("id,is_winner")
-          .eq("item_id", params.id)
-          .eq("seeker_id", user.id)
+      if (!user) {
+        // optional: force login for detail page too
+        router.replace("/login")
+        return
+      }
+
+      // 3) Fetch viewer role
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle()
+
+      const role = (profile?.role as Role) ?? null
+      setViewerRole(role)
+
+      // ✅ If viewer is a founder, they should NOT apply at all
+      if (role === "founder") {
+        setLoading(false)
+        return
+      }
+
+      // 4) Viewer is seeker: check claim status
+      const { data: claim } = await supabase
+        .from("claims")
+        .select("id,is_winner")
+        .eq("item_id", params.id)
+        .eq("seeker_id", user.id)
+        .maybeSingle()
+
+      const applied = !!claim
+      const winner = !!claim?.is_winner
+
+      setHasApplied(applied)
+      setIsWinner(winner)
+
+      // 5) If winner, fetch founder email
+      if (winner) {
+        const { data: founderProfile } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("id", it.founder_id)
           .maybeSingle()
 
-        const applied = !!claim
-        const winner = !!claim?.is_winner
-
-        setHasApplied(applied)
-        setIsWinner(winner)
-
-        // ✅ If winner, fetch founder contact email
-        if (winner) {
-          const { data: founderProfile, error: founderErr } = await supabase
-            .from("profiles")
-            .select("email")
-            .eq("id", it.founder_id)
-            .maybeSingle()
-
-          if (!founderErr) {
-            setFounderEmail(founderProfile?.email ?? null)
-          }
-        }
+        setFounderEmail(founderProfile?.email ?? null)
       }
 
       setLoading(false)
     }
 
     if (params?.id) load()
-  }, [params?.id])
+  }, [params?.id, router])
 
   const goApply = () => router.push(`/items/${params.id}/apply`)
 
@@ -110,6 +138,8 @@ export default function ItemDetailPage() {
       </main>
     )
   }
+
+  const canApply = viewerRole !== "founder" // ✅ main rule
 
   return (
     <main className="min-h-screen p-6 max-w-3xl mx-auto">
@@ -137,46 +167,52 @@ export default function ItemDetailPage() {
             <p className="text-sm">{item.description || "No description provided."}</p>
           </div>
 
-          {/* Apply / status messaging */}
-          <div className="pt-2">
-            {item.status === "claimed" ? (
-              isWinner ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-green-700 font-medium">
-                    🎉 You were selected! Contact the founder to collect the item.
-                  </p>
+          {/* Apply / status messaging (ONLY seekers) */}
+          {canApply ? (
+            <div className="pt-2">
+              {item.status === "claimed" ? (
+                isWinner ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-green-700 font-medium">
+                      🎉 You were selected! Contact the founder to collect the item.
+                    </p>
 
-                  {founderEmail ? (
-                    <p className="text-sm">
-                      Founder Email:{" "}
-                      <a
-                        href={`mailto:${founderEmail}`}
-                        className="text-primary underline underline-offset-4"
-                      >
-                        {founderEmail}
-                      </a>
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Founder email not available.
-                    </p>
-                  )}
-                </div>
+                    {founderEmail ? (
+                      <p className="text-sm">
+                        Founder Email:{" "}
+                        <a
+                          href={`mailto:${founderEmail}`}
+                          className="text-primary underline underline-offset-4"
+                        >
+                          {founderEmail}
+                        </a>
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Founder email not available.
+                      </p>
+                    )}
+                  </div>
+                ) : hasApplied ? (
+                  <p className="text-sm text-muted-foreground">
+                    This item has been claimed by another applicant. Thanks for applying.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">This item has been claimed.</p>
+                )
               ) : hasApplied ? (
-                <p className="text-sm text-muted-foreground">
-                  This item has been claimed by another applicant. Thanks for applying.
-                </p>
+                <Button disabled variant="outline">
+                  You have already applied
+                </Button>
               ) : (
-                <p className="text-sm text-muted-foreground">This item has been claimed.</p>
-              )
-            ) : hasApplied ? (
-              <Button disabled variant="outline">
-                You have already applied
-              </Button>
-            ) : (
-              <Button onClick={goApply}>Apply / Claim</Button>
-            )}
-          </div>
+                <Button onClick={goApply}>Apply / Claim</Button>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground pt-2">
+              Founders can’t apply for items.
+            </p>
+          )}
         </CardContent>
       </Card>
     </main>

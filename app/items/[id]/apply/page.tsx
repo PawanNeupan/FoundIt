@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 type Question = {
   question: string
   options: string[]
-  correctIndex?: number // stored in DB but we won't show it
+  correctIndex?: number
 }
 
 type Item = {
@@ -27,24 +27,52 @@ export default function ApplyPage() {
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
 
-  // answers[i] = selected option index (0/1/2) or null
   const [answers, setAnswers] = useState<(number | null)[]>([])
 
+  // --------------------------------------------------
+  // 🔐 AUTH + ROLE + ITEM CHECK
+  // --------------------------------------------------
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       setMsg(null)
 
+      // 1️⃣ Check session
+      const { data: sessionData } = await supabase.auth.getSession()
+      const user = sessionData.session?.user
+
+      if (!user) {
+        router.replace("/login")
+        return
+      }
+
+      // 2️⃣ Check role (block founders)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single()
+
+      if (profile?.role !== "seeker") {
+        router.replace("/items")
+        return
+      }
+
+      // 3️⃣ Load item
       const { data, error } = await supabase
         .from("items")
         .select("id,title,status,questions")
         .eq("id", params.id)
         .single()
 
-      if (error) {
-        setMsg(error.message)
-        setItem(null)
-        setLoading(false)
+      if (error || !data) {
+        router.replace("/items")
+        return
+      }
+
+      // 4️⃣ Block if already claimed
+      if (data.status === "claimed") {
+        router.replace("/items")
         return
       }
 
@@ -58,7 +86,7 @@ export default function ApplyPage() {
     }
 
     if (params?.id) load()
-  }, [params?.id])
+  }, [params?.id, router])
 
   const questions = useMemo(() => {
     if (!item?.questions || !Array.isArray(item.questions)) return []
@@ -67,45 +95,44 @@ export default function ApplyPage() {
 
   const allAnswered = answers.length > 0 && answers.every((a) => a !== null)
 
+  // --------------------------------------------------
+  // ✅ SUBMIT CLAIM
+  // --------------------------------------------------
   const handleContinue = async () => {
-  if (questions.length === 0) {
-    setMsg("This item has no questions.")
-    return
-  }
-
-  if (!allAnswered) {
-    setMsg("Please answer all questions.")
-    return
-  }
-
-  const { data: sessionData } = await supabase.auth.getSession()
-  const user = sessionData.session?.user
-
-  if (!user) {
-    setMsg("You must be logged in to apply.")
-    return
-  }
-
-  const { error } = await supabase.from("claims").insert({
-    item_id: params.id,
-    seeker_id: user.id,
-    answers, // array of selected option indexes
-  })
-
-  if (error) {
-    if (error.code === "23505") {
-      setMsg("You have already applied for this item.")
-    } else {
-      setMsg(error.message)
+    if (!allAnswered) {
+      setMsg("Please answer all questions.")
+      return
     }
-    return
+
+    const { data: sessionData } = await supabase.auth.getSession()
+    const user = sessionData.session?.user
+    if (!user) {
+      router.replace("/login")
+      return
+    }
+
+    const { error } = await supabase.from("claims").insert({
+      item_id: params.id,
+      seeker_id: user.id,
+      answers,
+    })
+
+    if (error) {
+      if (error.code === "23505") {
+        setMsg("You have already applied for this item.")
+      } else {
+        setMsg(error.message)
+      }
+      return
+    }
+
+    setMsg("Claim submitted successfully ✅")
+    setTimeout(() => router.replace(`/items/${params.id}`), 800)
   }
 
-  setMsg("Claim submitted successfully ✅")
-  setTimeout(() => router.push(`/items/${params.id}`), 800)
-}
-
-
+  // --------------------------------------------------
+  // UI STATES
+  // --------------------------------------------------
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -114,17 +141,11 @@ export default function ApplyPage() {
     )
   }
 
-  if (!item) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-6">
-        <p className="text-sm text-red-600">{msg ?? "Item not found"}</p>
-      </main>
-    )
-  }
+  if (!item) return null
 
   return (
     <main className="min-h-screen p-6 max-w-2xl mx-auto">
-      <Card>
+      <Card className="card-hover">
         <CardHeader>
           <CardTitle className="text-xl">Apply to Claim</CardTitle>
           <p className="text-sm text-muted-foreground">{item.title}</p>
@@ -133,46 +154,40 @@ export default function ApplyPage() {
         <CardContent className="space-y-6">
           {msg && <p className="text-sm text-red-600">{msg}</p>}
 
-          {questions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No questions available for this item yet.
-            </p>
-          ) : (
-            questions.map((q, idx) => (
-              <div key={idx} className="space-y-2">
-                <p className="text-sm font-medium">
-                  {idx + 1}. {q.question}
-                </p>
+          {questions.map((q, idx) => (
+            <div key={idx} className="space-y-2">
+              <p className="text-sm font-medium">
+                {idx + 1}. {q.question}
+              </p>
 
-                <div className="space-y-2">
-                  {q.options.map((opt, optIdx) => (
-                    <label
-                      key={optIdx}
-                      className="flex items-center gap-2 text-sm cursor-pointer"
-                    >
-                      <input
-                        type="radio"
-                        name={`q-${idx}`}
-                        checked={answers[idx] === optIdx}
-                        onChange={() => {
-                          const copy = [...answers]
-                          copy[idx] = optIdx
-                          setAnswers(copy)
-                        }}
-                      />
-                      <span>{opt}</span>
-                    </label>
-                  ))}
-                </div>
+              <div className="space-y-2">
+                {q.options.map((opt, optIdx) => (
+                  <label
+                    key={optIdx}
+                    className="flex items-center gap-2 text-sm cursor-pointer"
+                  >
+                    <input
+                      type="radio"
+                      name={`q-${idx}`}
+                      checked={answers[idx] === optIdx}
+                      onChange={() => {
+                        const copy = [...answers]
+                        copy[idx] = optIdx
+                        setAnswers(copy)
+                      }}
+                    />
+                    <span>{opt}</span>
+                  </label>
+                ))}
               </div>
-            ))
-          )}
+            </div>
+          ))}
 
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => router.back()}>
               Back
             </Button>
-            <Button onClick={handleContinue} disabled={questions.length === 0}>
+            <Button onClick={handleContinue} disabled={!allAnswered}>
               Submit Answers
             </Button>
           </div>

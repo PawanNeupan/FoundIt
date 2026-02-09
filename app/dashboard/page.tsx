@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireFounder } from "@/lib/useRequireFounder"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -51,6 +52,7 @@ function scoreClaim(questions: Question[] | null, answers: number[]) {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const { loading: gateLoading, allowed } = useRequireFounder()
 
   const [items, setItems] = useState<Item[]>([])
@@ -61,6 +63,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
+
+  // ✅ Redirect if not allowed (after gate finishes)
+  useEffect(() => {
+    if (!gateLoading && !allowed) {
+      router.replace("/items")
+    }
+  }, [gateLoading, allowed, router])
 
   const reload = async () => {
     setLoading(true)
@@ -169,7 +178,7 @@ export default function DashboardPage() {
       return
     }
 
-    // 2) Set the chosen claim to is_winner = true
+    // 2) Set chosen claim to is_winner = true
     const { error: winErr } = await supabase
       .from("claims")
       .update({ is_winner: true })
@@ -206,13 +215,8 @@ export default function DashboardPage() {
     )
   }
 
-  if (!allowed) {
-    return (
-      <main className="min-h-screen flex items-center justify-center">
-        Only founders can view this dashboard.
-      </main>
-    )
-  }
+  // If not allowed, redirect is happening; render nothing
+  if (!allowed) return null
 
   if (loading) {
     return (
@@ -297,7 +301,12 @@ export default function DashboardPage() {
               <div className="flex flex-col sm:flex-row gap-4 border rounded-md p-3">
                 {selectedItem.image_url ? (
                   <div className="relative w-full sm:w-56 h-40 overflow-hidden rounded-md border">
-                    <Image src={selectedItem.image_url} alt={selectedItem.title} fill className="object-cover" />
+                    <Image
+                      src={selectedItem.image_url}
+                      alt={selectedItem.title}
+                      fill
+                      className="object-cover"
+                    />
                   </div>
                 ) : (
                   <div className="w-full sm:w-56 h-40 rounded-md border flex items-center justify-center text-sm text-muted-foreground">
@@ -311,7 +320,8 @@ export default function DashboardPage() {
                     {selectedItem.category ?? "Uncategorized"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Questions: {Array.isArray(selectedItem.questions) ? selectedItem.questions.length : 0}
+                    Questions:{" "}
+                    {Array.isArray(selectedItem.questions) ? selectedItem.questions.length : 0}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Status: <span className="font-medium">{selectedItem.status}</span>
@@ -354,16 +364,32 @@ export default function DashboardPage() {
                   return (
                     <div key={c.id} className="border rounded-md p-4 space-y-2">
                       <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium">
-                            {displayName}{" "}
-                            {c.is_winner && (
-                              <span className="ml-2 text-xs text-green-700">🏆 Winner</span>
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full overflow-hidden border bg-muted flex items-center justify-center">
+                            {p?.avatar_url ? (
+                              <img
+                                src={p.avatar_url}
+                                alt={displayName}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-xs font-semibold uppercase">
+                                {displayName?.[0] ?? "U"}
+                              </span>
                             )}
-                          </p>
-                          {displayEmail && (
-                            <p className="text-xs text-muted-foreground">{displayEmail}</p>
-                          )}
+                          </div>
+
+                          <div>
+                            <p className="text-sm font-medium">
+                              {displayName}{" "}
+                              {c.is_winner && (
+                                <span className="ml-2 text-xs text-green-700">🏆 Winner</span>
+                              )}
+                            </p>
+                            {displayEmail && (
+                              <p className="text-xs text-muted-foreground">{displayEmail}</p>
+                            )}
+                          </div>
                         </div>
 
                         <p className="text-sm">

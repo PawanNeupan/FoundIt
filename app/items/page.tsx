@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 
 type Item = {
   id: string
@@ -26,13 +25,21 @@ export default function ItemsPage() {
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
 
-  
-
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       setMsg(null)
 
+      // ✅ 1. Check session FIRST
+      const { data: sessionData } = await supabase.auth.getSession()
+      const user = sessionData.session?.user
+
+      if (!user) {
+        router.replace("/login")
+        return
+      }
+
+      // ✅ 2. Fetch items only if logged in
       const { data, error } = await supabase
         .from("items")
         .select("id,title,category,description,status,image_url,created_at")
@@ -51,7 +58,7 @@ export default function ItemsPage() {
     }
 
     load()
-  }, [])
+  }, [router])
 
   if (loading) {
     return (
@@ -63,15 +70,12 @@ export default function ItemsPage() {
 
   return (
     <main className="min-h-screen p-6 max-w-6xl mx-auto">
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Found Items</h1>
-          <p className="text-sm text-muted-foreground">
-            Browse items reported as found.
-          </p>
-        </div>
-
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold">Found Items</h1>
+        <p className="text-sm text-muted-foreground">
+          Browse items reported as found.
+        </p>
       </div>
 
       {msg && <p className="text-sm text-red-600 mb-4">{msg}</p>}
@@ -82,7 +86,7 @@ export default function ItemsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
             <Link key={item.id} href={`/items/${item.id}`}>
-              <Card className="hover:shadow-sm transition-shadow card-hover">
+              <Card className="card-hover cursor-pointer">
                 <CardHeader>
                   <CardTitle className="text-base">{item.title}</CardTitle>
                   <p className="text-xs text-muted-foreground">
@@ -107,9 +111,7 @@ export default function ItemsPage() {
                   )}
 
                   {item.description ? (
-                    <p className="text-sm line-clamp-2">
-                      {item.description}
-                    </p>
+                    <p className="text-sm line-clamp-2">{item.description}</p>
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       No description

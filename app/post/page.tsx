@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireFounder } from "@/lib/useRequireFounder"
@@ -33,7 +33,29 @@ export default function PostItemPage() {
 
   const { loading, allowed } = useRequireFounder()
 
-  
+  // ✅ Redirect rules:
+  // - if no user -> /login
+  // - if seeker (not allowed) -> /items
+  useEffect(() => {
+    const run = async () => {
+      if (loading) return
+
+      const { data: sessionData } = await supabase.auth.getSession()
+      const user = sessionData.session?.user
+
+      if (!user) {
+        router.replace("/login")
+        return
+      }
+
+      if (!allowed) {
+        router.replace("/items")
+        return
+      }
+    }
+
+    run()
+  }, [loading, allowed, router])
 
   const validateQuestions = () => {
     if (questions.length < 2) return "Please add at least 2 questions."
@@ -44,7 +66,8 @@ export default function PostItemPage() {
       if (!Array.isArray(q.options) || q.options.length !== 3)
         return `Question ${i + 1} must have exactly 3 options.`
       for (let j = 0; j < 3; j++) {
-        if (!q.options[j].trim()) return `Option ${String.fromCharCode(65 + j)} in Question ${i + 1} is empty.`
+        if (!q.options[j].trim())
+          return `Option ${String.fromCharCode(65 + j)} in Question ${i + 1} is empty.`
       }
       if (![0, 1, 2].includes(q.correctIndex))
         return `Please select the correct option for Question ${i + 1}.`
@@ -61,8 +84,7 @@ export default function PostItemPage() {
     const user = sessionData.session?.user
 
     if (!user) {
-      setMsg("You are not logged in.")
-      setSaving(false)
+      router.replace("/login")
       return
     }
 
@@ -106,7 +128,7 @@ export default function PostItemPage() {
 
     const image_url = publicUrlData.publicUrl
 
-    // Insert into items table (questions saved here)
+    // Insert into items table
     const { error: insertError } = await supabase.from("items").insert({
       title,
       category,
@@ -132,9 +154,12 @@ export default function PostItemPage() {
       { question: "", options: ["", "", ""], correctIndex: 0 },
       { question: "", options: ["", "", ""], correctIndex: 0 },
     ])
+
     setSaving(false)
+    router.replace("/dashboard") // optional: go to dashboard after posting
   }
 
+  // Loading gate
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -143,17 +168,11 @@ export default function PostItemPage() {
     )
   }
 
-  if (!allowed) {
-    return (
-      <main className="min-h-screen flex items-center justify-center">
-        You are not allowed to post items.
-      </main>
-    )
-  }
+  // While redirecting, render nothing
+  if (!allowed) return null
 
   return (
     <main className="min-h-screen p-6">
-
       <div className="flex items-center justify-center">
         <Card className="w-full max-w-xl card-hover">
           <CardHeader>

@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 
 type ClaimRow = {
   id: string
@@ -24,44 +23,59 @@ type ClaimRow = {
   } | null
 }
 
+type Role = "founder" | "seeker" | null
+
 export default function MyClaimsPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
   const [claims, setClaims] = useState<ClaimRow[]>([])
 
-
-
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       setMsg(null)
 
+      // ✅ 1) Must be logged in
       const { data: sessionData } = await supabase.auth.getSession()
       const user = sessionData.session?.user
+
       if (!user) {
-        router.push("/login")
+        router.replace("/login")
         return
       }
 
-      // Load my claims + joined item details
+      // ✅ 2) Must be seeker (founder -> redirect home)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle()
+
+      const role = (profile?.role as Role) ?? null
+
+      if (role === "founder") {
+        router.replace("/")
+        return
+      }
+
+      // ✅ 3) Load my claims + joined item details
       const { data, error } = await supabase
         .from("claims")
-.select(`
-  id,
-  item_id,
-  created_at,
-  is_winner,
-  item:items!claims_item_id_fkey (
-    id,
-    title,
-    category,
-    status,
-    image_url,
-    created_at
-  )
-`)
-
+        .select(`
+          id,
+          item_id,
+          created_at,
+          is_winner,
+          item:items!claims_item_id_fkey (
+            id,
+            title,
+            category,
+            status,
+            image_url,
+            created_at
+          )
+        `)
         .eq("seeker_id", user.id)
         .order("created_at", { ascending: false })
 
@@ -80,9 +94,8 @@ export default function MyClaimsPage() {
   }, [router])
 
   const getStatusText = (c: ClaimRow) => {
-    const itemStatus = c.item?.status
     if (c.is_winner) return "🎉 Winner selected"
-    if (itemStatus === "claimed") return "❌ Not selected"
+    if (c.item?.status === "claimed") return "❌ Not selected"
     return "⏳ Pending"
   }
 
@@ -102,14 +115,11 @@ export default function MyClaimsPage() {
 
   return (
     <main className="min-h-screen p-6 max-w-6xl mx-auto">
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">My Applications</h1>
-          <p className="text-sm text-muted-foreground">
-            Items you have applied to claim.
-          </p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold">My Applications</h1>
+        <p className="text-sm text-muted-foreground">
+          Items you have applied to claim.
+        </p>
       </div>
 
       {msg && <p className="text-sm text-red-600 mb-4">{msg}</p>}
@@ -122,7 +132,7 @@ export default function MyClaimsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {claims.map((c) => (
             <Link key={c.id} href={`/items/${c.item_id}`}>
-              <Card className="hover:shadow-sm transition-shadow">
+              <Card className="card-hover cursor-pointer">
                 <CardHeader>
                   <CardTitle className="text-base">
                     {c.item?.title ?? "Item"}
