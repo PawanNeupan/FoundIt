@@ -124,12 +124,7 @@ export default function ProfilePage() {
     }
   }, [previewUrl])
 
-  const logout = async () => {
-    await supabase.auth.signOut()
-    await queryClient.invalidateQueries({ queryKey: ["profile"] })
-    router.replace("/login")
-    router.refresh()
-  }
+ 
 
   if (isLoading) {
     return (
@@ -146,9 +141,6 @@ export default function ProfilePage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Profile</CardTitle>
-          <Button variant="outline" size="sm" onClick={logout}>
-            Logout
-          </Button>
         </CardHeader>
 
         <CardContent className="space-y-6">
