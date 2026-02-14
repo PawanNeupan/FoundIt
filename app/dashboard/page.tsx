@@ -51,6 +51,16 @@ function scoreClaim(questions: Question[] | null, answers: number[]) {
   return { correct, total }
 }
 
+// ✅ helper to remove the storage file if image_url is a supabase storage public URL
+function getStoragePathFromPublicUrl(publicUrl: string) {
+  // Example public url:
+  // https://xxxx.supabase.co/storage/v1/object/public/item-images/<path>
+  const marker = "/storage/v1/object/public/item-images/"
+  const idx = publicUrl.indexOf(marker)
+  if (idx === -1) return null
+  return publicUrl.substring(idx + marker.length)
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { loading: gateLoading, allowed } = useRequireFounder()
@@ -64,7 +74,7 @@ export default function DashboardPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
 
-  // ✅ Redirect if not allowed (after gate finishes)
+  // ✅ Redirect if not founder
   useEffect(() => {
     if (!gateLoading && !allowed) {
       router.replace("/items")
@@ -77,13 +87,13 @@ export default function DashboardPage() {
 
     const { data: sessionData } = await supabase.auth.getSession()
     const user = sessionData.session?.user
+
     if (!user) {
-      setMsg("Not logged in.")
-      setLoading(false)
+      router.replace("/login")
       return
     }
 
-    // Items
+    // Items (only my items)
     const { data: itemsData, error: itemsError } = await supabase
       .from("items")
       .select("id,title,created_at,questions,image_url,category,status,winning_claim_id")
@@ -100,23 +110,23 @@ export default function DashboardPage() {
     setItems(it)
     setSelectedItemId((prev) => prev ?? it[0]?.id ?? null)
 
-    // Claims + seeker profile
+    // Claims + seeker profile (all claims, filtered later by selected item)
     const { data: claimsData, error: claimsError } = await supabase
       .from("claims")
       .select(
         `
-        id,
-        item_id,
-        seeker_id,
-        answers,
-        created_at,
-        is_winner,
-        seeker_profile:profiles!claims_seeker_id_fkey (
-          username,
-          email,
-          avatar_url
-        )
-      `
+          id,
+          item_id,
+          seeker_id,
+          answers,
+          created_at,
+          is_winner,
+          seeker_profile:profiles!claims_seeker_id_fkey (
+            username,
+            email,
+            avatar_url
+          )
+        `
       )
       .order("created_at", { ascending: false })
 
@@ -166,7 +176,7 @@ export default function DashboardPage() {
     setActionBusy(true)
     setMsg(null)
 
-    // 1) Set all claims for item to is_winner = false
+    // 1) Clear all winners
     const { error: clearErr } = await supabase
       .from("claims")
       .update({ is_winner: false })
@@ -178,7 +188,7 @@ export default function DashboardPage() {
       return
     }
 
-    // 2) Set chosen claim to is_winner = true
+    // 2) Set chosen claim
     const { error: winErr } = await supabase
       .from("claims")
       .update({ is_winner: true })
@@ -190,7 +200,7 @@ export default function DashboardPage() {
       return
     }
 
-    // 3) Mark item claimed and store winning_claim_id
+    // 3) Mark item claimed
     const { error: itemErr } = await supabase
       .from("items")
       .update({ status: "claimed", winning_claim_id: claimId })
@@ -207,6 +217,46 @@ export default function DashboardPage() {
     alert("Winner selected ✅ Item claimed.")
   }
 
+  const deleteItem = async (it: Item) => {
+    const ok = confirm("Delete this item? This cannot be undone.")
+    if (!ok) return
+
+    setActionBusy(true)
+    setMsg(null)
+
+    try {
+      // (optional) delete image from storage if it belongs to our bucket
+      if (it.image_url) {
+        const path = getStoragePathFromPublicUrl(it.image_url)
+        if (path) {
+          await supabase.storage.from("item-images").remove([path])
+        }
+      }
+
+      // delete item row
+      const { error } = await supabase.from("items").delete().eq("id", it.id)
+      if (error) {
+        setMsg(error.message)
+        setActionBusy(false)
+        return
+      }
+
+      // update UI selection
+      setItems((prev) => prev.filter((x) => x.id !== it.id))
+      setSelectedItemId((prev) => (prev === it.id ? null : prev))
+
+      // refresh list
+      await reload()
+      alert("Item deleted ✅")
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  const goEdit = (id: string) => {
+    router.push(`/dashboard/edit/${id}`)
+  }
+
   if (gateLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -215,7 +265,7 @@ export default function DashboardPage() {
     )
   }
 
-  // If not allowed, redirect is happening; render nothing
+  // redirect is happening
   if (!allowed) return null
 
   if (loading) {
@@ -231,7 +281,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold">Founder Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Choose a winner and filter applicants by correct answers.
+          Choose a winner, filter applicants, edit or delete your item.
         </p>
       </div>
 
@@ -314,7 +364,7 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                <div className="space-y-1">
+                <div className="space-y-2 flex-1">
                   <p className="text-sm font-medium">{selectedItem.title}</p>
                   <p className="text-xs text-muted-foreground">
                     {selectedItem.category ?? "Uncategorized"}
@@ -323,9 +373,34 @@ export default function DashboardPage() {
                     Questions:{" "}
                     {Array.isArray(selectedItem.questions) ? selectedItem.questions.length : 0}
                   </p>
+
                   <p className="text-xs text-muted-foreground">
                     Status: <span className="font-medium">{selectedItem.status}</span>
                   </p>
+
+                  {/* ✅ Edit + Delete (below status) */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => goEdit(selectedItem.id)}
+                      disabled={actionBusy}
+                      className="w-full sm:w-auto"
+                    >
+                      Edit Item
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => deleteItem(selectedItem)}
+                      disabled={actionBusy}
+                      className="w-full sm:w-auto"
+                    >
+                      {actionBusy ? "Deleting..." : "Delete Item"}
+                    </Button>
+                  </div>
+
                   {selectedItem.status === "claimed" && selectedItem.winning_claim_id && (
                     <p className="text-xs text-green-700">
                       ✅ Winner selected (claim id: {selectedItem.winning_claim_id})
@@ -393,7 +468,10 @@ export default function DashboardPage() {
                         </div>
 
                         <p className="text-sm">
-                          Score: <span className="font-semibold">{c.correct}/{c.total}</span>
+                          Score:{" "}
+                          <span className="font-semibold">
+                            {c.correct}/{c.total}
+                          </span>
                         </p>
                       </div>
 
